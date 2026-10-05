@@ -1,6 +1,6 @@
 # mvn-moments
 
-<img src="https://raw.githubusercontent.com/aamanku/mvn-moments/main/docs/assets/logo.png" alt="MVN Moments: a correlated Gaussian with a highlighted rectangular region" width="128" height="128">
+![mvn-moments: N-dimensional Gaussian moments over hyperrectangles, C++17 / Python](https://raw.githubusercontent.com/aamanku/mvn-moments/main/docs/assets/social-preview.png)
 
 Probability, mean, and second moment of a multivariate normal distribution
 over a rectangle, with a C++17 library (Eigen) and Python bindings. Built for
