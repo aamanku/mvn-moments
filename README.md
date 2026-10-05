@@ -1,15 +1,17 @@
 # mvn-moments
 
+<img src="https://raw.githubusercontent.com/aamanku/mvn-moments/main/docs/assets/logo.png" alt="MVN Moments: a correlated Gaussian with a highlighted rectangular region" width="128" height="128">
+
 Probability, mean, and second moment of a multivariate normal distribution
 over a rectangle, with a C++17 library (Eigen) and Python bindings. Built for
 real-time loops: solvers allocate once in `Init`, then `Compute` never
 allocates or throws and returns a status code.
 
-For X ~ N(mu, Sigma) and the rectangle S = [lower, upper], it computes
+For a multivariate normal random vector and an axis-aligned rectangle, it computes
 
-    zeroth = P(X in S),   first = E[X 1{X in S}],   second = E[X X^T 1{X in S}]
+![X follows N(mu, Sigma); S is the rectangle from lower to upper. zeroth = P(X in S); first = E[X 1{X in S}]; second = E[X X^T 1{X in S}].](https://raw.githubusercontent.com/aamanku/mvn-moments/main/docs/assets/moments.png)
 
-so the truncated mean is `first / zeroth`. Each source file starts with the
+so the truncated mean is `first / zeroth` when `zeroth > 0`. Each source file starts with the
 equations it implements and links to its references.
 
 ## Python
@@ -102,7 +104,7 @@ int main()
 Select moments with `Order` (e.g. `Order::kZeroth | Order::kFirst`), and set
 the sample budget with `SamplingConfig` or `GenzConfig`.
 
-More in [docs](docs/README.md): API, methods and real-time use, development,
+More in [docs](https://github.com/aamanku/mvn-moments/blob/main/docs/README.md): API, methods and real-time use, development,
 and releasing.
 
 ## License

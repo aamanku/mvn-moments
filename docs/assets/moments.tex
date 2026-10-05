@@ -1,0 +1,12 @@
+% Render with pdflatex, then pdftoppm -png -singlefile -r 160.
+\documentclass[border=8pt]{standalone}
+\usepackage{amsmath,amssymb}
+\begin{document}
+$\begin{aligned}
+X &\sim \mathcal{N}(\mu,\Sigma),
+& S &= \{x \in \mathbb{R}^{n}: \ell_i \le x_i \le u_i,\ i=1,\ldots,n\}, \\
+\text{zeroth} &= \Pr(X \in S), \\
+\text{first} &= \mathbb{E}\!\left[X\,\mathbf{1}_{\{X\in S\}}\right], \\
+\text{second} &= \mathbb{E}\!\left[XX^{\mathsf{T}}\,\mathbf{1}_{\{X\in S\}}\right].
+\end{aligned}$
+\end{document}
