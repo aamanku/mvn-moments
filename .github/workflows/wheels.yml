@@ -1,0 +1,121 @@
+# Builds and tests wheels for CPython 3.9-3.14 and an sdist on every push and
+# pull request. A pushed tag vX.Y.Z... publishes to PyPI; running the workflow
+# manually with "testpypi" checked publishes to TestPyPI. Both use PyPI
+# Trusted Publishing, so no API token is stored.
+name: Wheels
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      testpypi:
+        description: "Publish the built distributions to TestPyPI"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  cpp-tests:
+    name: C++ tests (benchmarks ${{ matrix.benchmarks }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        benchmarks: ["OFF", "ON"]
+    steps:
+      - uses: actions/checkout@v7
+      # The system Eigen, as on robots.
+      - run: sudo apt-get update && sudo apt-get install -y libeigen3-dev
+      - run: >-
+          cmake -S . -B build
+          -DMVN_ENABLE_BENCHMARKS=${{ matrix.benchmarks }}
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure
+
+  wheels:
+    name: Wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux x86_64 and aarch64, Windows x86_64, macOS Intel and Apple
+        # silicon. Python versions and tests are set in pyproject.toml.
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - windows-latest
+          - macos-15-intel
+          - macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pypa/cibuildwheel@v4.2.1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  sdist:
+    name: Source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.9"
+      - run: pipx run build --sdist
+      # Builds from the sdist with the system Eigen, as on robots. Wheels
+      # instead download the pinned Eigen 3.4.0 (see pyproject.toml).
+      - run: sudo apt-get update && sudo apt-get install -y libeigen3-dev
+      - run: >-
+          python -m pip install dist/*.tar.gz
+          -C cmake.define.MVN_DOWNLOAD_EIGEN=OFF
+      - run: python tests/python_smoke.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    if: github.event_name == 'workflow_dispatch' && inputs.testpypi
+    needs: [cpp-tests, wheels, sdist]
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/mvn-moments
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@v1.14.2
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: Publish to PyPI
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [cpp-tests, wheels, sdist]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/mvn-moments
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      # The tag must name the version being published, e.g. v0.1.0a1.
+      - name: Check tag matches package version
+        run: |
+          ls dist
+          test -f "dist/mvn_moments-${GITHUB_REF_NAME#v}.tar.gz"
+      - uses: pypa/gh-action-pypi-publish@v1.14.2

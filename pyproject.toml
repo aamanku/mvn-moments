@@ -1,0 +1,66 @@
+[build-system]
+requires = ["scikit-build-core>=0.11", "pybind11>=2.13"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "mvn-moments"
+version = "0.1.0a1"
+description = "Raw moments of a multivariate normal distribution over a rectangle, built for real-time loops"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.23"]
+license = "BSD-3-Clause"
+# Wheels contain compiled code from Eigen headers; see licenses/eigen.
+license-files = [
+    "LICENSE",
+    "licenses/eigen/COPYING.MPL2",
+    "licenses/eigen/COPYING.BSD",
+]
+authors = [{ name = "Abhijeet Kulkarni" }]
+keywords = [
+    "multivariate normal", "truncated normal", "moments", "quasi-Monte Carlo",
+    "Genz", "real-time", "robotics",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[project.urls]
+Homepage = "https://github.com/aamanku/mvn-moments"
+Issues = "https://github.com/aamanku/mvn-moments/issues"
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+wheel.packages = ["python/mvn_moments"]
+
+[tool.scikit-build.cmake.define]
+MVN_BUILD_PYTHON = "ON"
+MVN_BUILD_EXAMPLE = "OFF"
+MVN_BUILD_TESTS = "OFF"
+# Wheels always compile against the downloaded, checksum-pinned Eigen 3.4.0.
+MVN_DOWNLOAD_EIGEN = "ON"
+
+[tool.cibuildwheel]
+# CPython 3.9-3.14 on 64-bit platforms; NumPy has no 32-bit wheels to test with.
+build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
+skip = "*-win32 *_i686 *-musllinux_*"
+test-requires = ["numpy"]
+test-command = "python {project}/tests/python_smoke.py"
+
+[tool.cibuildwheel.macos.environment]
+# C++17 library features need macOS 10.15 on Intel; arm64 starts at 11.0.
+MACOSX_DEPLOYMENT_TARGET = "10.15"
