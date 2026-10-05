@@ -1,5 +1,5 @@
 # mvn-moments
-
+[![Wheels](https://github.com/aamanku/mvn-moments/actions/workflows/wheels.yml/badge.svg)](https://github.com/aamanku/mvn-moments/actions/workflows/wheels.yml)
 ![mvn-moments: N-dimensional Gaussian moments over hyperrectangles, C++17 / Python](https://raw.githubusercontent.com/aamanku/mvn-moments/main/docs/assets/social-preview.png)
 
 Probability, mean, and second moment of a multivariate normal distribution
