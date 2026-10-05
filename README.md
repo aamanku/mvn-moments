@@ -22,6 +22,9 @@ pip install --pre mvn-moments
 
 Wheels cover CPython 3.9-3.14 on Linux, Windows, and macOS.
 
+Call `mvn_moments.help()` after `import mvn_moments` for a manual-style overview of the
+available methods, options, results, errors, and the example below.
+
 ```python
 import numpy as np
 from mvn_moments import GenzSolver, genz_quasi_monte_carlo
