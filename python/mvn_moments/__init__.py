@@ -1,13 +1,15 @@
 from ._core import (
     Order, Result, SamplingConfig, GenzConfig, MonteCarloSolver, HaltonSolver,
     GenzSolver, analytic, monte_carlo, quasi_monte_carlo,
-    genz_quasi_monte_carlo,
+    genz_quasi_monte_carlo, BivariateConfig, MomentsConfig, Method, MomentsSolver,
+    bivariate, moments,
 )
 
 __all__ = ["Order", "Result", "SamplingConfig", "GenzConfig",
            "MonteCarloSolver", "HaltonSolver", "GenzSolver", "analytic",
            "monte_carlo", "quasi_monte_carlo", "genz_quasi_monte_carlo",
-           "help"]
+           "BivariateConfig", "MomentsConfig", "Method", "MomentsSolver",
+           "bivariate", "moments", "help"]
 
 
 def help():
@@ -23,6 +25,7 @@ SYNOPSIS
 
     result = method(mean, covariance, lower, upper, order=Order.ALL)
     solver = Solver(max_dimension, config=Config(), seed=42)
+    solver = MomentsSolver(config=MomentsConfig(), seed=42)
     result = solver.compute(mean, covariance, lower, upper, order=Order.ALL)
 
 DESCRIPTION
@@ -31,10 +34,24 @@ DESCRIPTION
     Use a one-shot function or reuse a solver for repeated computations.
 
 METHODS
+    moments / MomentsSolver
+        Selects analytic for 1D, bivariate for 2D, and Genz for higher dimensions.
+        Python-only: no dimension or Init call; infers and validates input shapes
+        on every compute call. Uses MomentsConfig (genz and bivariate settings).
+        solver.method reports
+        Method.ANALYTIC, Method.BIVARIATE, or Method.GENZ after success.
+
+    bivariate
+        Deterministic 2D conditional quadrature for probability and all moments.
+        Uses BivariateConfig: relative_tolerance (default 1e-10), max_intervals
+        (default 4096, maximum 65536), timing. No sampling standard errors.
+        Convergence estimates are not certified bounds; failure raises RuntimeError.
+
     genz_quasi_monte_carlo / GenzSolver
-        Genz lattice quasi-Monte Carlo; the default choice. Avoids rejection
+        Genz lattice quasi-Monte Carlo; use above two dimensions. Avoids rejection
         sampling, so rare rectangles work. Reports standard errors across
-        random shifts. Uses GenzConfig. Nearly singular covariances can fail;
+        random shifts. Warns once when used in 1D/2D; prefer analytic/bivariate.
+        Uses GenzConfig. Nearly singular covariances can fail;
         increase shifts when error estimates matter.
 
     monte_carlo / MonteCarloSolver
@@ -86,7 +103,7 @@ ERRORS
 
 EXAMPLES
     import numpy as np
-    from mvn_moments import GenzSolver, genz_quasi_monte_carlo
+    from mvn_moments import MomentsSolver, moments
 
     n = 5
     mean = np.zeros(n)
@@ -94,11 +111,11 @@ EXAMPLES
     lower, upper = np.full(n, -1.0), np.full(n, 2.0)
 
     # One call.
-    result = genz_quasi_monte_carlo(mean, covariance, lower, upper)
+    result = moments(mean, covariance, lower, upper)
     print(result.zeroth, result.first / result.zeroth)
 
     # Repeated calls, e.g. in a loop: allocate once, then compute.
-    solver = GenzSolver(n, seed=42)
+    solver = MomentsSolver(seed=42)
     result = solver.compute(mean, covariance, lower, upper)
 
 SEE ALSO

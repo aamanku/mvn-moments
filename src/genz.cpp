@@ -79,12 +79,14 @@
 #include "mvn_moments/detail/lattice.hpp"
 #include "mvn_moments/detail/normal.hpp"
 #include "mvn_moments/helper.hpp"
+#include "mvn_moments/log.hpp"
 
 namespace mvn::detail {
 // Genz state, allocated by GenzSolver::Init for up to max_dimension
 // variables; each call uses the leading entries.
 struct GenzState {
     GenzConfig config;
+    bool warned_low_dimension = false;
     // Points per batch: min(N, batch_size).
     Eigen::Index capacity = 0;
     std::mt19937_64 rng;
@@ -600,6 +602,12 @@ Status GenzSolver::Compute(const Eigen::Ref<const Eigen::VectorXd>& mean,
                                     *state_, result_, MVN_TIMER_ARG(timer));
     if (status != Status::kOk) {
         detail::ClearResult(result_);
+    } else if (mean.size() <= 2 && !state_->warned_low_dimension) {
+        Log(Level::kWarning,
+            "For 1D use Analytic; for 2D use Bivariate. Python MomentsSolver "
+            "selects "
+            "these specialized methods automatically.");
+        state_->warned_low_dimension = true;
     }
 
     return status;

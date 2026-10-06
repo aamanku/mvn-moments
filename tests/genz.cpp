@@ -65,20 +65,26 @@ mvn::Result Exact(const VectorXd& mean, const MatrixXd& variance,
 double LatticeMerit(const std::vector<std::uint64_t>& generator,
                     std::uint64_t points)
 {
-    // Long double limits cancellation in the mean minus one.
-    long double total = 0;
+    // Sum prod(1 + term) - 1 directly, with compensation. Subtracting one
+    // after averaging loses precision in the small merit, especially on
+    // arm64 platforms where long double has the same precision as double.
+    long double total = 0, correction = 0;
     for (std::uint64_t k = 0; k < points; ++k) {
-        long double product = 1;
+        long double excess = 0;
         for (std::size_t j = 0; j < generator.size(); ++j) {
-            const double weight = j < 2 ? 1.0 : std::pow(0.8, j - 1);
-            const double x =
-                static_cast<double>(k * generator[j] % points) / points;
-            product *= 1 + weight * (x * x - x + 1.0 / 6);
+            const long double weight = j < 2 ? 1.0L : std::pow(0.8L, j - 1);
+            const long double x =
+                static_cast<long double>(k * generator[j] % points) / points;
+            const long double term = weight * (x * x - x + 1.0L / 6);
+            excess = std::fma(term, 1 + excess, excess);
         }
-        total += product;
+        const long double adjusted = excess - correction;
+        const long double next = total + adjusted;
+        correction = (next - total) - adjusted;
+        total = next;
     }
 
-    return static_cast<double>(total / points - 1);
+    return static_cast<double>(total / points);
 }
 
 void TestNormal()

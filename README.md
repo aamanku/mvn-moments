@@ -27,7 +27,7 @@ available methods, options, results, errors, and the example below.
 
 ```python
 import numpy as np
-from mvn_moments import GenzSolver, genz_quasi_monte_carlo
+from mvn_moments import MomentsSolver, moments
 
 n = 5
 mean = np.zeros(n)
@@ -35,11 +35,11 @@ covariance = 0.5 * np.eye(n) + 0.5  # Unit variances, correlation 0.5.
 lower, upper = np.full(n, -1.0), np.full(n, 2.0)
 
 # One call.
-result = genz_quasi_monte_carlo(mean, covariance, lower, upper)
+result = moments(mean, covariance, lower, upper)
 print(result.zeroth, result.first / result.zeroth)
 
 # Repeated calls, e.g. in a loop: allocate once, then compute.
-solver = GenzSolver(n, seed=42)
+solver = MomentsSolver(seed=42)
 result = solver.compute(mean, covariance, lower, upper)
 ```
 
@@ -99,10 +99,19 @@ int main()
 
 | Method | C++ | Python | Notes |
 | --- | --- | --- | --- |
+| Automatic selection | — | `moments` | Analytic in 1D, deterministic quadrature in 2D, Genz above 2D |
+| Bivariate quadrature | `Bivariate` | `bivariate` | Deterministic probability and moments; two dimensions only |
 | Genz lattice QMC | `GenzSolver` | `genz_quasi_monte_carlo` | No rejection, so rare rectangles work; reports standard errors |
 | Monte Carlo | `MonteCarloSolver` | `monte_carlo` | Rejection sampling |
 | Halton QMC | `HaltonSolver` | `quasi_monte_carlo` | Rejection sampling with shifted Halton points |
 | Closed form | `Analytic` | `analytic` | One dimension only |
+
+Python `MomentsSolver()` infers and validates the dimension from each call;
+`moments(...)` performs a one-shot selection. Direct `GenzSolver`
+use in 1D/2D warns once per initialized solver that specialized methods are
+available. `BivariateConfig` controls the relative quadrature tolerance
+(default `1e-10`) and maximum adaptive interval evaluations (default `4096`).
+It returns an explicit numerical error if convergence fails.
 
 Select moments with `Order` (e.g. `Order::kZeroth | Order::kFirst`), and set
 the sample budget with `SamplingConfig` or `GenzConfig`.

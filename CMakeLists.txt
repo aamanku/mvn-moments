@@ -62,6 +62,7 @@ add_library(mvn_moments
     src/monte_carlo.cpp
     src/sampler.cpp
     src/analytic.cpp
+    src/bivariate.cpp
     src/quasi_monte_carlo.cpp
     src/lattice.cpp
     src/genz.cpp)
@@ -90,7 +91,7 @@ if(MVN_BUILD_EXAMPLE)
 endif()
 if(MVN_BUILD_TESTS)
     enable_testing()
-    foreach(name smoke helpers numerical genz realtime)
+    foreach(name smoke helpers numerical genz realtime bivariate)
         add_executable(mvn_${name}_tests tests/${name}.cpp)
         target_link_libraries(mvn_${name}_tests PRIVATE mvn_moments)
         add_test(NAME ${name} COMMAND mvn_${name}_tests)

@@ -31,6 +31,7 @@
 // Each method's equations and sources are at the top of its source file:
 //
 //     Analytic          closed form for n = 1     src/analytic.cpp
+//     Bivariate         conditional quadrature    src/bivariate.cpp
 //     MonteCarloSolver  rejection sampling        src/sampler.cpp,
 //                                                 src/monte_carlo.cpp
 //     HaltonSolver      rejection sampling with   src/sampler.cpp,
@@ -79,7 +80,7 @@ enum class Status {
     kNumericallySingular,
     // Rejection sampling never entered a nondegenerate rectangle.
     kNoAcceptedSamples,
-    // Nonfinite samples or moments, or an underflowed probability.
+    // Nonfinite samples/moments, underflow, or quadrature nonconvergence.
     kNumericalError,
 };
 
@@ -99,7 +100,8 @@ constexpr const char* StatusMessage(Status status)
             return "No samples entered the rectangle; increase samples or use "
                    "Genz";
         case Status::kNumericalError:
-            return "Arithmetic overflow, underflow, or cancellation";
+            return "Arithmetic overflow, underflow, cancellation, or "
+                   "integration did not converge";
     }
 
     return "Unknown status";
@@ -183,6 +185,14 @@ struct GenzConfig {
     std::size_t shifts = 10;
 };
 
+// Deterministic conditional quadrature for two dimensions. The tolerance
+// controls an estimated relative quadrature error, not a certified bound.
+struct BivariateConfig {
+    double relative_tolerance = 1e-10;
+    std::size_t max_intervals = 4096;
+    bool timing = false;
+};
+
 namespace detail {
 struct SamplingState;
 struct GenzState;
@@ -254,7 +264,9 @@ class HaltonSolver {
 // randomly shifted CBC rank-1 lattice. Every point lies in the rectangle, so
 // rare rectangles do not fail. Uses config.shifts lattices of a prime size
 // N <= samples / shifts, built once in Init; Result::samples reports
-// shifts * N. Fills the standard errors across shifts.
+// shifts * N. Fills the standard errors across shifts. For dimensions 1 and 2,
+// prefer Analytic and Bivariate; low-dimensional use warns
+// once.
 class GenzSolver {
    public:
     GenzSolver();
@@ -277,6 +289,14 @@ class GenzSolver {
     std::unique_ptr<detail::GenzState> state_;
     Result result_;
 };
+
+// Two-dimensional deterministic probability and raw moments. Preallocate
+// result with capacity >= 2. Does not allocate; no sampling standard errors.
+Status Bivariate(const Eigen::Ref<const Eigen::VectorXd>& mean,
+                 const Eigen::Ref<const Eigen::MatrixXd>& covariance,
+                 const Eigen::Ref<const Eigen::VectorXd>& lower,
+                 const Eigen::Ref<const Eigen::VectorXd>& upper, Order order,
+                 Result& result, const BivariateConfig& config = {});
 
 // Closed form for one dimension; result needs capacity for one variable.
 // Does not allocate.

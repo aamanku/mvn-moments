@@ -176,4 +176,16 @@ int main()
     CheckSolver<mvn::GenzSolver>("Genz small batches",
                                  mvn::GenzConfig{5000, false, 17, 10}, false);
     TestAnalytic();
+    mvn::Result result(2);
+    const Eigen::Vector2d mean(0.1, -0.2), lower(-1, -1), upper(1, 2);
+    const Eigen::Matrix2d covariance =
+        (Eigen::Matrix2d() << 1, 0.3, 0.3, 2).finished();
+    mvn::Status status;
+    {
+        NoAllocation guard;
+        status = mvn::Bivariate(mean, covariance, lower, upper,
+                                mvn::Order::kAll, result);
+    }
+    Returns(mvn::Status::kOk, status, "Bivariate");
+    Require(allocations == 0, "Bivariate allocated");
 }

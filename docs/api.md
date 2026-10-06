@@ -33,6 +33,18 @@ const mvn::Result& GetResult() const;  // Empty before Init or after failure.
 `Analytic(mean, covariance, lower, upper, order, result)` is the closed form
 for one dimension; it writes a caller-owned `mvn::Result result(1)`.
 
+`Bivariate(mean, covariance, lower, upper, order, result, config = {})`
+computes probability and moments in two dimensions by deterministic conditional
+Gauss-Kronrod quadrature. Preallocate `mvn::Result result(2)`; the call does not
+allocate. `BivariateConfig.relative_tolerance` defaults to `1e-10` and
+`max_intervals` to `4096` (valid range 1 through 65536). The tolerance controls
+an estimated integration error, not a certified bound. Exhausting the adaptive
+budget warns and returns `kNumericalError`; failed results are cleared.
+`samples` and `accepted` are zero, and sampling errors are absent.
+
+Direct Genz use in dimensions 1/2 warns once per initialized solver that
+`Analytic` and `Bivariate` are available. Automatic selection is a Python API.
+
 **Result.** `zeroth` and `zeroth_error` are `std::optional<double>`;
 `First()`, `Second()`, `FirstError()`, and `SecondError()` are Eigen views of
 preallocated storage, empty when not selected. Only Genz fills the errors.
@@ -80,3 +92,26 @@ The other methods are `monte_carlo` / `MonteCarloSolver` and
 Results have `samples`, `accepted`, `zeroth`, `first`, `second`, and the
 `*_error` fields, as floats/None and NumPy arrays. Invalid inputs raise
 `ValueError`; numerical failures raise `RuntimeError`.
+
+`bivariate(mean, covariance, lower, upper, order=Order.ALL,
+config=BivariateConfig())` exposes the separate 2D method. `moments(...)`
+uses `MomentsConfig()` and `seed=42`; `MomentsSolver(config=MomentsConfig(), seed=42)` infers and validates the dimension
+on each call and offers repeated calls and a read-only `method` property containing the `Method` enum.
+
+```python
+from mvn_moments import MomentsSolver, bivariate
+
+result_2d = bivariate(mean_2d, covariance_2d, lower_2d, upper_2d)
+solver = MomentsSolver()
+result = solver.compute(mean, covariance, lower, upper)
+print(solver.method)
+```
+
+`MomentsSolver` is Python-only. It requires no dimension, capacity, or `Init` call.
+It selects analytic / bivariate / Genz for actual dimensions 1 / 2 / >2 after
+validating shapes, bounds, finite values, and covariance symmetry. The chosen
+method validates positive definiteness. Different dimensions can be passed to
+the same instance. The last Genz solver is reused at matching dimensions; a new
+Genz dimension rebuilds it with the configured seed. `method` is `Method.NONE`
+and `result` is empty before the first call or after failure. Python may allocate
+on any call; use explicit C++ methods for allocation-free computation.

@@ -27,3 +27,20 @@ After `Init`, `Compute` (and `Analytic`):
 allocation, across changed covariances, smaller problems, order changes, and
 failures. Keep `MVN_ENABLE_BENCHMARKS` off in real-time builds and create one
 solver per thread.
+
+## Specialized low-dimensional methods and automatic selection
+
+`Analytic` uses closed-form 1D moments. `Bivariate` integrates the analytic
+conditional moments of the second coordinate over the first coordinate using
+adaptive Gauss(7)-Kronrod(15) quadrature. It computes all selected moments in
+one deterministic integration, preserving tail probabilities without four-corner
+CDF subtraction. Infinite outer bounds are truncated at +/-40 standard
+deviations; omitted probability mass is below double's smallest subnormal.
+Narrow intervals use stable width calculations and Gauss-Legendre conditional
+moments. Quadrature estimates are not certified error bounds; nonconvergence,
+underflow, and nonfinite results return explicit errors.
+
+Python-only `MomentsSolver()` infers and validates the actual dimension on every call: 1D to `Analytic`,
+2D to `Bivariate`, and higher dimensions to Genz. Selection does not switch
+silently to a sampling method when specialized quadrature fails. Genz warns
+once when explicitly used for dimensions 1 or 2.

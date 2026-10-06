@@ -4,11 +4,53 @@ import numpy as np
 from mvn_moments import (
     Order, SamplingConfig, GenzConfig, MonteCarloSolver, HaltonSolver,
     GenzSolver, analytic, monte_carlo, quasi_monte_carlo,
-    genz_quasi_monte_carlo,
+    genz_quasi_monte_carlo, bivariate, moments, MomentsSolver, MomentsConfig,
+    BivariateConfig, Method,
 )
 
 
 class BindingsTest(unittest.TestCase):
+    def test_specialized_and_moments(self):
+        result = bivariate([0, 0], [[1, 0.5], [0.5, 1]],
+                           [0, 0], [np.inf, np.inf])
+        self.assertAlmostEqual(result.zeroth, 1 / 3, delta=2e-12)
+        self.assertEqual(result.samples, 0)
+        self.assertIsNone(result.zeroth_error)
+        config = MomentsConfig()
+        config.genz.samples = 1000
+        solver = MomentsSolver(config=config)
+        self.assertEqual(solver.method, Method.NONE)
+        for dimension, method in ((1, Method.ANALYTIC),
+                                  (2, Method.BIVARIATE), (3, Method.GENZ)):
+            inputs = (np.zeros(dimension), np.eye(dimension),
+                      -np.ones(dimension), np.ones(dimension))
+            a = solver.compute(*inputs)
+            b = moments(*inputs, config=config)
+            self.assertEqual(solver.method, method)
+            self.assertAlmostEqual(a.zeroth, b.zeroth, delta=1e-13)
+            self.assertEqual(a.first.shape, (dimension,))
+        # No capacity is supplied; dimension can grow after construction.
+        grown = solver.compute(np.zeros(4), np.eye(4), -np.ones(4), np.ones(4))
+        self.assertEqual(grown.first.shape, (4,))
+        self.assertEqual(solver.method, Method.GENZ)
+        for inputs in (([], [], [], []),
+                       ([0, 0], [[1]], [-1, -1], [1, 1]),
+                       ([0, 0], np.eye(2), [-1], [1, 1])):
+            with self.assertRaises(ValueError):
+                solver.compute(*inputs)
+            self.assertEqual(solver.method, Method.NONE)
+            self.assertIsNone(solver.result.zeroth)
+        with self.assertRaises(ValueError):
+            bivariate([0], [[1]], [-1], [1])
+        with self.assertRaises(ValueError):
+            solver.compute([0, 0], [[1, 2], [2, 1]], [-1, -1], [1, 1])
+        self.assertEqual(solver.method, Method.NONE)
+        self.assertIsNone(solver.result.zeroth)
+        limited = BivariateConfig()
+        limited.max_intervals = 1
+        with self.assertRaises(RuntimeError):
+            bivariate([0, 0], np.eye(2), [-1, -1], [1, 1], config=limited)
+
     def test_array_layouts(self):
         config = SamplingConfig()
         config.samples = 20000
