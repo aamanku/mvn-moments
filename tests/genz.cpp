@@ -110,6 +110,29 @@ void TestNormal()
             "Quantile at NaN");
 }
 
+void TestQuantileBatches()
+{
+    // Homogeneous central, ordinary-tail, and deep-tail packets, followed
+    // by mixed regions, invalid probabilities, and a partial final packet.
+    VectorXd probabilities(29);
+    probabilities << 0.1, 0.3, 0.7, 0.9, 0.001, 0.01, 0.99, 0.999, 1e-100,
+        1e-150, 1e-200, 1e-300, 0.5, 0.01, 0.9, 1e-100, 0, 1, -1, 2, kInf,
+        -kInf, std::numeric_limits<double>::quiet_NaN(), 0.075, 0.925,
+        std::nextafter(0.0, 1.0), std::nextafter(1.0, 0.0), 0.5, 0.25;
+    VectorXd actual = probabilities;
+    mvn::detail::NormalQuantiles(actual);
+
+    for (Eigen::Index i = 0; i < probabilities.size(); ++i) {
+        const double expected = mvn::detail::NormalQuantile(probabilities(i));
+        if (std::isnan(expected)) {
+            Require(std::isnan(actual(i)), "Batched invalid quantile");
+        } else {
+            Near(actual(i), expected, 2e-15 * std::max(1.0, std::abs(expected)),
+                 "Batched quantile agrees with scalar AS241");
+        }
+    }
+}
+
 void TestLattice()
 {
     // Generators from SciPy 1.18 _cbc_lattice. Exact CBC ties (such as a
@@ -246,6 +269,35 @@ void TestAccuracy()
             "Rare standard errors must not underflow");
 }
 
+// Both reflected and unreflected deep-tail intervals must retain relative
+// accuracy, including the off-diagonal raw second moment.
+void TestMixedTails()
+{
+    const VectorXd mean = VectorXd::Zero(2);
+    const MatrixXd covariance = MatrixXd::Identity(2, 2);
+    VectorXd lower(2), upper(2);
+    lower << -10, 9;
+    upper << -9, kInf;
+    const auto left = Exact(mean.head(1), MatrixXd::Identity(1, 1),
+                            lower.head(1), upper.head(1));
+    const auto right = Exact(mean.tail(1), MatrixXd::Identity(1, 1),
+                             lower.tail(1), upper.tail(1));
+    const auto result = Genz(mean, covariance, lower, upper);
+
+    Relative(*result.zeroth, *left.zeroth * *right.zeroth, 1e-12,
+             "Mixed-tail probability");
+    Relative(result.First()(0), left.First()(0) * *right.zeroth, 1e-5,
+             "Mixed-tail lower first moment");
+    Relative(result.First()(1), right.First()(0) * *left.zeroth, 1e-5,
+             "Mixed-tail upper first moment");
+    Relative(result.Second()(0, 0), left.Second()(0, 0) * *right.zeroth, 1e-5,
+             "Mixed-tail lower second moment");
+    Relative(result.Second()(1, 1), right.Second()(0, 0) * *left.zeroth, 1e-5,
+             "Mixed-tail upper second moment");
+    Relative(result.Second()(0, 1), left.First()(0) * right.First()(0), 1e-5,
+             "Mixed-tail cross moment");
+}
+
 void TestInvariance()
 {
     VectorXd mean(3), lower(3), upper(3);
@@ -336,9 +388,11 @@ void TestCovariance()
 int main()
 {
     TestNormal();
+    TestQuantileBatches();
     TestLattice();
     TestExactProbabilities();
     TestAccuracy();
+    TestMixedTails();
     TestInvariance();
     TestConfigAndErrors();
     TestCovariance();

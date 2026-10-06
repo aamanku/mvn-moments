@@ -110,6 +110,7 @@ struct GenzState {
     Eigen::MatrixXd samples;
     Eigen::VectorXd weight;
     Eigen::VectorXd offset;
+    Eigen::VectorXd quantile_sign;
 
     // Per-shift lattice shift and sums, the flattened estimates (one column
     // per shift), and their means and standard errors.
@@ -129,23 +130,6 @@ using detail::GenzState;
 // Pivots at or below (k + 1) * kSingularTolerance are treated as singular,
 // matching SciPy's _permuted_cholesky on the correlation scale.
 constexpr double kSingularTolerance = 1e-10;
-
-// Draws y in [a, b] from the standard normal truncated to it, through the
-// inverse CDF at u in [0, 1]. The upper tail is drawn by reflection, which
-// keeps the CDF argument away from 1. Arguments are clamped to (0, 1), so
-// zero-probability intervals give finite draws that carry zero weight.
-double TruncatedQuantile(double a, double b, double probability, double u)
-{
-    const double smallest = std::nextafter(0.0, 1.0);
-    const double largest = std::nextafter(1.0, 0.0);
-    if (a > 0) {
-        const double p = detail::NormalCdf(-b) + u * probability;
-        return -detail::NormalQuantile(std::clamp(p, smallest, largest));
-    }
-
-    const double p = detail::NormalCdf(a) + u * probability;
-    return detail::NormalQuantile(std::clamp(p, smallest, largest));
-}
 
 // Port of SciPy's _permuted_cholesky (Genz's MVNDST reordering) into state:
 // each step picks the remaining variable with the smallest conditional
@@ -268,12 +252,20 @@ Status PermutedCholesky(const Eigen::Ref<const Eigen::MatrixXd>& covariance,
 Status SampleShift(const Eigen::Ref<const Eigen::VectorXd>& mean,
                    Eigen::Index drawn, GenzState& s, double& zeroth,
                    Eigen::Ref<Eigen::VectorXd> first_sum,
-                   Eigen::Ref<Eigen::MatrixXd> second_sum)
+                   Eigen::Ref<Eigen::MatrixXd> second_sum, Timer* timer)
 {
     const auto n = mean.size();
     const bool moments = first_sum.size() != 0 || second_sum.size() != 0;
     const auto points = s.lattice.points;
     const auto batch_size = static_cast<std::uint64_t>(s.capacity);
+
+    // The first variable has no conditional offset: its interval is shared
+    // by every point in this shift, including across batches.
+    const bool first_reflect = s.lower(0) > 0;
+    const double first_endpoint =
+        detail::NormalCdf(first_reflect ? -s.upper(0) : s.lower(0));
+    const double first_end =
+        detail::NormalCdf(first_reflect ? -s.lower(0) : s.upper(0));
 
     zeroth = 0;
     first_sum.setZero();
@@ -298,39 +290,60 @@ Status SampleShift(const Eigen::Ref<const Eigen::VectorXd>& mean,
         // Sequential conditioning: variable i is drawn inside its interval
         // given the earlier draws, and the weight collects each interval's
         // probability. Lattice coordinate i drives variable i.
-        for (Eigen::Index i = 0; i < n; ++i) {
-            offset.setZero();
-            for (Eigen::Index k = 0; k < i; ++k) {
-                offset += s.unit(i, k) * y.col(k);
-            }
-            const bool draw = i < drawn;
-            const auto generator = draw ? s.lattice.generator[i] : 0;
-            for (Eigen::Index row = 0; row < count; ++row) {
-                const double a = s.lower(i) - offset(row);
-                const double b = s.upper(i) - offset(row);
-                const double probability =
-                    std::max(detail::IntervalProbability(a, b), 0.0);
-                weight(row) *= probability;
-                if (!draw) {
-                    continue;
+        {
+            MVN_SCOPE(timer, "conditional_sampling");
+            for (Eigen::Index i = 0; i < n; ++i) {
+                offset.setZero();
+                for (Eigen::Index k = 0; k < i; ++k) {
+                    offset += s.unit(i, k) * y.col(k);
                 }
+                const bool draw = i < drawn;
+                const auto generator = draw ? s.lattice.generator[i] : 0;
+                for (Eigen::Index row = 0; row < count; ++row) {
+                    const double a = s.lower(i) - offset(row);
+                    const double b = s.upper(i) - offset(row);
+                    // Reflect upper-tail intervals so both CDF endpoints remain
+                    // small. Reuse the lower endpoint for the conditional draw.
+                    const bool reflect = a > 0;
+                    const double endpoint =
+                        i == 0 ? first_endpoint
+                               : detail::NormalCdf(reflect ? -b : a);
+                    const double end =
+                        i == 0 ? first_end
+                               : detail::NormalCdf(reflect ? -a : b);
+                    const double probability = std::max(end - endpoint, 0.0);
+                    weight(row) *= probability;
+                    if (!draw) {
+                        continue;
+                    }
 
-                // Shifted lattice coordinate with the tent (baker's) map.
-                const auto k = (completed + row + 1) % points;
-                double u = static_cast<double>(k * generator % points) /
-                               static_cast<double>(points) +
-                           s.shift(i);
-                if (u >= 1) {
-                    u -= 1;
+                    // Shifted lattice coordinate with the tent (baker's) map.
+                    const auto k = (completed + row + 1) % points;
+                    double u = static_cast<double>(k * generator % points) /
+                                   static_cast<double>(points) +
+                               s.shift(i);
+                    if (u >= 1) {
+                        u -= 1;
+                    }
+                    u = std::abs(2 * u - 1);
+                    // Clamp to the open unit interval; collapsed intervals
+                    // still yield finite draws with zero weight.
+                    y(row, i) = std::clamp(endpoint + u * probability,
+                                           std::nextafter(0.0, 1.0),
+                                           std::nextafter(1.0, 0.0));
+                    s.quantile_sign(row) = reflect ? -1.0 : 1.0;
                 }
-                u = std::abs(2 * u - 1);
-                y(row, i) = TruncatedQuantile(a, b, probability, u);
-            }
-            if (moments) {
-                z.col(i) = s.pivot(i) * (offset + y.col(i));
+                if (draw) {
+                    detail::NormalQuantiles(y.col(i));
+                    y.col(i).array() *= s.quantile_sign.head(count).array();
+                }
+                if (moments) {
+                    z.col(i) = s.pivot(i) * (offset + y.col(i));
+                }
             }
         }
 
+        MVN_SCOPE(timer, "moment_accumulation");
         zeroth += weight.sum();
         if (moments) {
             auto x = s.samples.topLeftCorner(count, n);
@@ -457,7 +470,8 @@ Status Integrate(const Eigen::Ref<const Eigen::VectorXd>& mean,
             }
 
             double zeroth = 0;
-            status = SampleShift(mean, drawn, s, zeroth, first_sum, second_sum);
+            status = SampleShift(mean, drawn, s, zeroth, first_sum, second_sum,
+                                 timer);
             if (status != Status::kOk) {
                 return status;
             }
@@ -535,6 +549,7 @@ Status Allocate(Eigen::Index max_dimension, const GenzConfig& config,
     s.samples.resize(capacity, max_dimension);
     s.weight.resize(capacity);
     s.offset.resize(capacity);
+    s.quantile_sign.resize(capacity);
 
     s.shift.resize(max_dimension);
     s.first_sum.resize(max_dimension);
