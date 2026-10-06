@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(mvn_moments VERSION 0.1.0 LANGUAGES CXX)
+project(mvn_moments VERSION 1.1.1 LANGUAGES CXX)
 
 # Release uses -O3 with GCC/Clang. Honor explicitly selected build types.
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
